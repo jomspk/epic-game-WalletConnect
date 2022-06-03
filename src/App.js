@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import twitterLogo from './assets/twitter-logo.svg';
 import './App.css';
 import SelectCharacter from "./Components/SelectCharacter";
@@ -7,50 +7,34 @@ import { ethers } from "ethers";
 import myEpicGame from "./utils/MyEpicGame.json";
 import Arena from "./Components/Arena";
 import LoadingIndicator from "./Components/LoadingIndicator";
+import WalletConnectProvider from '@walletconnect/web3-provider';
 
 // Constants
 const TWITTER_HANDLE = 'Bazar1305';
 const TWITTER_LINK = `https://twitter.com/${TWITTER_HANDLE}`;
+let provider = null;
+let connectProvider = null;
 
 const App = () => {
   const [currentAccount, setCurrentAccount] = useState(null);
   const [characterNFT, setCharacterNFT] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  //const [web3Provider, setWeb3Provider] = useState(null);
 
   const checkNetwork = async () => {
     try {
-      if (window.ethereum.networkVersion !== "4") {
+      const { chainId } = provider;
+      console.log(chainId);
+      if (chainId != "4") {
         alert("Rinkeby Test Network に接続してください!");
+        await provider.disconnect();
+        window.location.reload();
       } else {
         console.log("Rinkeby に接続されています。");
       }
     } catch (error) {
       console.log(error);
     }
-  };
-  const checkIfWalletIsConnected = async () => {
-    try {
-      const { ethereum } = window;
-      if (!ethereum) {
-        console.log("Make sure you have MetaMask!");
-        setIsLoading(false);
-        return;
-      } else {
-        console.log("We have the ethereum object", ethereum);
-        const accounts = await ethereum.request({ method: "eth_accounts"});
-        if (accounts.length !== 0) {
-          const account = accounts[0];
-          console.log("Found an authorized account:", account);
-          setCurrentAccount(account);
-          checkNetwork();
-        } else {
-          console.log("No authorized account found");
-        }
-      }
-    } catch (error) {
-      console.log(error);
-    }
-    setIsLoading(false);
   };
 
   const renderContent = () => {
@@ -72,35 +56,34 @@ const App = () => {
   }
 
   const connectWalletAction = async () => {
-    try {
-      const { ethereum } = window;
-      if (!ethereum) {
-        alert("MetaMaskをダウンロードしてください!");
-        return;
-      }
-      checkIfWalletIsConnected();
-      const accounts = await ethereum.request({
-        method: "eth_requestAccounts",
-      });
-
-      console.log("Connected", accounts[0]);
-      setCurrentAccount(accounts[0]);
-      checkNetwork();
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  useEffect(() => {
     setIsLoading(true);
-    checkIfWalletIsConnected();
-  }, []);
-  useEffect(() => {
-    const fetchNFTMetadata = async () => {
+    try {
+      provider = new WalletConnectProvider({
+        rpc: {
+          4: "https://rinkeby.infura.io/v3/kbFs7RUqezB7Ywq2jVEAgY_Z-2942DFX",
+        },
+        chainId: 4,
+        qrcodeModalOptions: {
+          mobileLinks: [
+            "rainbow",
+            "metamask",
+            "argent",
+            "trust",
+            "imtoken",
+            "pillar",
+          ],
+        },
+      });
+      console.log(provider);
+      await provider.enable();
+      provider.updateRpcUrl(4);
+      connectProvider = new ethers.providers.Web3Provider(provider);
+      //setWeb3Provider(new ethers.providers.Web3Provider(provider));
+      let { accounts } = provider;
+      await checkNetwork();
+      setCurrentAccount(accounts[0]);
       console.log("Checking for Character NFT on address:", currentAccount);
-
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
+      const signer = connectProvider.getSigner();
       const gameContract = new ethers.Contract(
         CONTRACT_ADDRESS,
         myEpicGame.abi,
@@ -114,14 +97,37 @@ const App = () => {
       } else {
         console.log("No character NFT found");
       }
-    };
-
-    if (currentAccount) {
-      console.log("CurrentAccount:", currentAccount);
-      fetchNFTMetadata();
+      setIsLoading(false);
+    } catch (error) {
+      console.log("Install metamask or use WalletConnect");
+      console.log(error);
+      setIsLoading(false);
     }
-    setIsLoading(false);
-  }, [currentAccount]);
+
+    await subscribeToEvents();
+  };
+
+  const subscribeToEvents = async () => {
+    if (!provider) {
+      return;
+    }
+
+    provider.on("accountsChanged", async (accounts) => {
+      console.log("User changed account");
+      console.log(accounts);
+    });
+
+    provider.on("chainChainged", async (chainId) => {
+      console.log("User changed chainId!!");
+      console.log(chainId);
+    });
+
+    provider.on("disconnect", async (code, reason) => {
+      console.log("User disconnect!!!");
+      console.log(code, reason);
+    });
+  }
+
   return (
     <div className="App">
       <div className="container">
